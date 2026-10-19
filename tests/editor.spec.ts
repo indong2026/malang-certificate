@@ -72,7 +72,20 @@ test('Korean text, themes, photo crop, random, PNG parity and reset', async ({ p
   await page.screenshot({ path: testInfo.outputPath('edited.png'), fullPage: true })
   await page.getByRole('button', { name: '초기화', exact: true }).click(); await ready(page)
   await expect(page.getByLabel('종목명')).toHaveValue('제초'); await expect(page.getByLabel('등급', { exact: true })).toHaveValue('3급')
-  await expect(page.locator('.crop-canvas')).toHaveCount(0); expect(await pixels(page)).toBe(initial)
+  await expect(page.locator('.crop-canvas')).toHaveCount(0)
+  // Confirm reset visually from decoded pixels rather than encoder-specific byte output.
+  const resetDiff = await page.evaluate(async (initial) => {
+    const image = new Image(); image.src = initial; await image.decode()
+    const reference = document.createElement('canvas'); reference.width = 2000; reference.height = 1240
+    const ctx = reference.getContext('2d')!; ctx.drawImage(image, 0, 0)
+    const before = ctx.getImageData(0, 0, 2000, 1240).data
+    const resetImage = new Image(); resetImage.src = document.querySelector<HTMLCanvasElement>('.certificate')!.toDataURL(); await resetImage.decode()
+    ctx.clearRect(0, 0, 2000, 1240); ctx.drawImage(resetImage, 0, 0)
+    const after = ctx.getImageData(0, 0, 2000, 1240).data
+    let count = 0; for (let i = 0; i < before.length; i++) if (before[i] !== after[i]) count++
+    return count
+  }, initial)
+  expect(resetDiff).toBe(0)
   expect(errors).toEqual([]); expect(externalRequests).toEqual([])
   if (testInfo.project.name === 'desktop') {
     await mkdir('.qa', { recursive: true }); await page.screenshot({ path: '.qa/desktop.png', fullPage: true })
